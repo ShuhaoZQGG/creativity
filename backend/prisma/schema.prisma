@@ -1,0 +1,76 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                String     @id @default(uuid())
+  email             String     @unique
+  passwordHash      String?    @map("password_hash")
+  name              String?
+  subscriptionTier  String     @default("free") @map("subscription_tier")
+  metaAccessToken   String?    @map("meta_access_token")
+  metaAdAccountId   String?    @map("meta_ad_account_id")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  creatives         Creative[]
+  abTests           ABTest[]
+  billing           Billing?
+
+  @@map("users")
+}
+
+model Creative {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  inputContext    Json     @map("input_context")
+  textVariant     Json     @map("text_variant")
+  imageUrls       String[] @map("image_urls")
+  videoUrls       String[] @map("video_urls")
+  score           Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("creatives")
+}
+
+model ABTest {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  creativeIds     String[] @map("creative_ids")
+  metaCampaignId  String?  @map("meta_campaign_id")
+  results         Json?
+  status          String   @default("draft")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ab_tests")
+}
+
+model Billing {
+  id                    String   @id @default(uuid())
+  userId                String   @unique @map("user_id")
+  stripeCustomerId      String?  @map("stripe_customer_id")
+  stripeSubscriptionId  String?  @map("stripe_subscription_id")
+  plan                  String?
+  status                String?
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("billing")
+}

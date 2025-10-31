@@ -22,32 +22,34 @@ router.get('/dashboard', requireAuth, async (req: AuthRequest, res) => {
     });
 
     // Calculate summary statistics
-    const creativesWithMetrics = creatives.map((creative) => {
-      const textVariant = creative.textVariant as any;
-      const score = creative.score as any;
+    const creativesWithMetrics = await Promise.all(
+      creatives.map(async (creative) => {
+        const textVariant = creative.textVariant as any;
+        const score = creative.score as any;
 
-      // Find AB test results for this creative
-      const relatedTest = abTests.find((test) =>
-        test.creativeIds.includes(creative.id)
-      );
+        // Find AB test results for this creative
+        const relatedTest = abTests.find((test) =>
+          test.creativeIds.includes(creative.id)
+        );
 
-      const results = relatedTest?.results as any;
+        const results = relatedTest?.results as any;
 
-      return {
-        id: creative.id,
-        headline: textVariant.headline,
-        body: textVariant.body,
-        cta: textVariant.cta,
-        image_url: creative.imageUrls[0] ? getSignedUrl(creative.imageUrls[0] as string) : null,
-        score: score?.overall || 0,
-        ctr: results?.ctr ? parseFloat(results.ctr) : null,
-        cpc: results?.cpc ? parseFloat(results.cpc) : null,
-        spend: results?.spend ? parseFloat(results.spend) : null,
-        impressions: results?.impressions ? parseInt(results.impressions) : null,
-        clicks: results?.clicks ? parseInt(results.clicks) : null,
-        created_at: creative.createdAt,
-      };
-    });
+        return {
+          id: creative.id,
+          headline: textVariant.headline,
+          body: textVariant.body,
+          cta: textVariant.cta,
+          image_url: creative.imageUrls[0] ? await getSignedUrl(creative.imageUrls[0] as string) : null,
+          score: score?.overall || 0,
+          ctr: results?.ctr ? parseFloat(results.ctr) : null,
+          cpc: results?.cpc ? parseFloat(results.cpc) : null,
+          spend: results?.spend ? parseFloat(results.spend) : null,
+          impressions: results?.impressions ? parseInt(results.impressions) : null,
+          clicks: results?.clicks ? parseInt(results.clicks) : null,
+          created_at: creative.createdAt,
+        };
+      })
+    );
 
     // Calculate averages
     const creativesWithCTR = creativesWithMetrics.filter((c) => c.ctr !== null);

@@ -126,7 +126,7 @@ router.post('/abtest', requireAuth, async (req: AuthRequest, res) => {
           name: `Creative ${creative.id}`,
           headline: textVariant.headline,
           body: textVariant.body,
-          imageUrl: getSignedUrl(creative.imageUrls[0] as string, 60 * 60 * 24 * 30), // 30 days for Meta
+          imageUrl: await getSignedUrl(creative.imageUrls[0] as string, 60 * 60 * 24 * 30), // 30 days for Meta
           linkUrl: inputContext.website_url || 'https://example.com',
           callToAction: textVariant.cta,
         });

@@ -42,7 +42,7 @@ router.post('/upload-base-image', requireAuth, upload.single('image'), async (re
     console.log('[Upload] Uploaded to S3:', s3Key);
 
     // Generate signed URL for the response
-    const signedUrl = getSignedUrl(s3Key);
+    const signedUrl = await getSignedUrl(s3Key);
 
     res.json({
       success: true,
@@ -70,7 +70,7 @@ router.post('/analyze-website', requireAuth, async (req: AuthRequest, res) => {
     const analysis = await analyzeWebsite(website_url, userId);
 
     // Generate signed URL for screenshot
-    const screenshotUrl = getSignedUrl(analysis.screenshotUrl);
+    const screenshotUrl = await getSignedUrl(analysis.screenshotUrl);
 
     res.json({
       success: true,
@@ -142,7 +142,7 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
         if (base_image_s3_key) {
           // Use base image - generate variation
           console.log(`[Creative] Using base image for variant ${index + 1}...`);
-          const baseImageUrl = getSignedUrl(base_image_s3_key);
+          const baseImageUrl = await getSignedUrl(base_image_s3_key);
           const imagePrompt = `${product_description} for ${target_audience}, ${brand_name} brand style. ${textVariant.headline}`;
 
           console.log(`[Creative] Generating image variation for variant ${index + 1}...`);
@@ -201,7 +201,7 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
         console.log(`[Creative] Saved to database: ${creative.id}`);
 
         // Generate signed URL for the response (expires in 7 days)
-        const signedImageUrl = getSignedUrl(s3Key);
+        const signedImageUrl = await getSignedUrl(s3Key);
 
         return {
           id: creative.id,
@@ -340,11 +340,13 @@ router.get('/creatives', requireAuth, async (req: AuthRequest, res) => {
     });
 
     // Generate signed URLs for all image keys
-    const creativesWithSignedUrls = creatives.map(creative => ({
-      ...creative,
-      imageUrls: (creative.imageUrls as string[]).map(s3Key => getSignedUrl(s3Key)),
-      videoUrls: (creative.videoUrls as string[]).map(s3Key => getSignedUrl(s3Key)),
-    }));
+    const creativesWithSignedUrls = await Promise.all(
+      creatives.map(async creative => ({
+        ...creative,
+        imageUrls: await Promise.all((creative.imageUrls as string[]).map(s3Key => getSignedUrl(s3Key))),
+        videoUrls: await Promise.all((creative.videoUrls as string[]).map(s3Key => getSignedUrl(s3Key))),
+      }))
+    );
 
     res.json({
       creatives: creativesWithSignedUrls,
@@ -375,8 +377,8 @@ router.get('/creatives/:id', requireAuth, async (req: AuthRequest, res) => {
     // Generate signed URLs for image and video keys
     const creativeWithSignedUrls = {
       ...creative,
-      imageUrls: (creative.imageUrls as string[]).map(s3Key => getSignedUrl(s3Key)),
-      videoUrls: (creative.videoUrls as string[]).map(s3Key => getSignedUrl(s3Key)),
+      imageUrls: await Promise.all((creative.imageUrls as string[]).map(s3Key => getSignedUrl(s3Key))),
+      videoUrls: await Promise.all((creative.videoUrls as string[]).map(s3Key => getSignedUrl(s3Key))),
     };
 
     res.json({ creative: creativeWithSignedUrls });

@@ -1,6 +1,6 @@
 import puppeteer, { Browser } from 'puppeteer';
 import * as cheerio from 'cheerio';
-import Vibrant from 'node-vibrant';
+import * as Vibrant from 'node-vibrant/node';
 import { uploadImage } from './storage.js';
 import OpenAI from 'openai';
 
@@ -80,7 +80,7 @@ export async function analyzeWebsite(websiteUrl: string, userId: string): Promis
 
     // Extract colors from screenshot using Vibrant
     console.log('[WebScraper] Extracting colors...');
-    const palette = await Vibrant.from(screenshotBuffer as Buffer).getPalette();
+    const palette = await new Vibrant.Vibrant(screenshotBuffer as Buffer).getPalette();
     const brandColors = [
       palette.Vibrant?.hex,
       palette.DarkVibrant?.hex,

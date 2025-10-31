@@ -1,22 +1,25 @@
-import AWS from 'aws-sdk';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl as getSignedUrlV3 } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const s3Client = new S3Client({
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
   region: process.env.AWS_REGION,
 });
 
 const BUCKET = process.env.AWS_S3_BUCKET || 'creativity-assets';
 
 // Generate a signed URL for private S3 objects (expires in 7 days)
-export function getSignedUrl(s3Key: string, expiresInSeconds: number = 604800): string {
-  return s3.getSignedUrl('getObject', {
+export async function getSignedUrl(s3Key: string, expiresInSeconds: number = 604800): Promise<string> {
+  const command = new GetObjectCommand({
     Bucket: BUCKET,
     Key: s3Key,
-    Expires: expiresInSeconds,
   });
+  return await getSignedUrlV3(s3Client, command, { expiresIn: expiresInSeconds });
 }
 
 export async function uploadImageFromUrl(imageUrl: string, userId: string): Promise<string> {
@@ -36,14 +39,14 @@ export async function uploadImageFromUrl(imageUrl: string, userId: string): Prom
     console.log('[Storage] S3 key:', key);
 
     // Upload to S3 (private by default)
-    await s3
-      .putObject({
+    await s3Client.send(
+      new PutObjectCommand({
         Bucket: BUCKET,
         Key: key,
         Body: buffer,
         ContentType: 'image/png',
       })
-      .promise();
+    );
 
     console.log('[Storage] Upload successful');
 
@@ -60,14 +63,14 @@ export async function uploadImage(buffer: Buffer, userId: string, contentType: s
     const extension = contentType.split('/')[1] || 'png';
     const key = `creatives/${userId}/${uuidv4()}.${extension}`;
 
-    await s3
-      .putObject({
+    await s3Client.send(
+      new PutObjectCommand({
         Bucket: BUCKET,
         Key: key,
         Body: buffer,
         ContentType: contentType,
       })
-      .promise();
+    );
 
     // Return S3 key (not URL) - will generate signed URL when needed
     return key;

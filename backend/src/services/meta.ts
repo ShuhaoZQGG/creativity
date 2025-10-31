@@ -243,3 +243,48 @@ export async function getCampaignInsights(
     throw error;
   }
 }
+
+export async function updateCampaignStatus(
+  accessToken: string,
+  campaignId: string,
+  status: string
+): Promise<void> {
+  try {
+    await axios.post(
+      `${META_GRAPH_API}/${campaignId}`,
+      { status },
+      {
+        params: { access_token: accessToken },
+      }
+    );
+  } catch (error) {
+    console.error('Update campaign status error:', error);
+    throw error;
+  }
+}
+
+export async function getAdInsights(
+  accessToken: string,
+  adId: string,
+  datePreset?: string
+): Promise<any> {
+  try {
+    const params: any = {
+      access_token: accessToken,
+      fields: 'impressions,clicks,spend,ctr,cpc,cpm,conversions,actions',
+    };
+
+    if (datePreset) {
+      params.date_preset = datePreset;
+    }
+
+    const response = await axios.get(`${META_GRAPH_API}/${adId}/insights`, {
+      params,
+    });
+
+    return response.data.data[0] || {};
+  } catch (error) {
+    console.error('Get ad insights error:', error);
+    throw error;
+  }
+}

@@ -9,6 +9,7 @@ import {
   createAd,
   createAdCreative,
   getCampaignInsights,
+  updateCampaignStatus,
 } from '../services/meta.js';
 import { getSignedUrl } from '../services/storage.js';
 
@@ -220,6 +221,146 @@ router.get('/results', requireAuth, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get results error:', error);
     res.status(500).json({ error: 'Failed to get results' });
+  }
+});
+
+// List all A/B tests for the user
+router.get('/abtests', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { status } = req.query;
+
+    const where: any = {
+      userId: req.user!.id,
+    };
+
+    if (status) {
+      where.status = status;
+    }
+
+    const abTests = await prisma.aBTest.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        variants: true,
+        analytics: {
+          orderBy: { date: 'desc' },
+          take: 1, // Get latest analytics for each test
+        },
+      },
+    });
+
+    res.json({ tests: abTests });
+  } catch (error) {
+    console.error('List AB tests error:', error);
+    res.status(500).json({ error: 'Failed to list AB tests' });
+  }
+});
+
+// Get detailed analytics for a specific A/B test
+router.get('/abtests/:id/analytics', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { start_date, end_date } = req.query;
+
+    const abTest = await prisma.aBTest.findFirst({
+      where: {
+        id,
+        userId: req.user!.id,
+      },
+      include: {
+        variants: true,
+      },
+    });
+
+    if (!abTest) {
+      return res.status(404).json({ error: 'AB test not found' });
+    }
+
+    const where: any = {
+      abTestId: id,
+    };
+
+    if (start_date && end_date) {
+      where.date = {
+        gte: new Date(start_date as string),
+        lte: new Date(end_date as string),
+      };
+    }
+
+    const analytics = await prisma.adAnalytics.findMany({
+      where,
+      orderBy: { date: 'desc' },
+    });
+
+    res.json({
+      test: abTest,
+      analytics,
+    });
+  } catch (error) {
+    console.error('Get analytics error:', error);
+    res.status(500).json({ error: 'Failed to get analytics' });
+  }
+});
+
+// Update campaign status
+router.patch('/campaigns/:campaignId/status', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { campaignId } = req.params;
+    const { status } = req.body;
+
+    if (!['ACTIVE', 'PAUSED', 'ARCHIVED'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+    });
+
+    if (!user?.metaAccessToken) {
+      return res.status(400).json({ error: 'Meta account not connected' });
+    }
+
+    // Update campaign status on Meta
+    await updateCampaignStatus(user.metaAccessToken, campaignId, status);
+
+    // Update local AB test status
+    await prisma.aBTest.updateMany({
+      where: {
+        userId: req.user!.id,
+        metaCampaignId: campaignId,
+      },
+      data: {
+        status: status.toLowerCase(),
+      },
+    });
+
+    res.json({ status: 'updated' });
+  } catch (error) {
+    console.error('Update campaign status error:', error);
+    res.status(500).json({ error: 'Failed to update campaign status' });
+  }
+});
+
+// Get connection status
+router.get('/status', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: {
+        metaAccessToken: true,
+        metaAdAccountId: true,
+      },
+    });
+
+    const isConnected = !!(user?.metaAccessToken && user?.metaAdAccountId);
+
+    res.json({
+      connected: isConnected,
+      ad_account_id: user?.metaAdAccountId || null,
+    });
+  } catch (error) {
+    console.error('Get status error:', error);
+    res.status(500).json({ error: 'Failed to get connection status' });
   }
 });
 

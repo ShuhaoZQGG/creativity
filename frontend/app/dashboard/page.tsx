@@ -48,10 +48,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [metaConnected, setMetaConnected] = useState(false);
+  const [metaAccountId, setMetaAccountId] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuth();
     loadDashboard();
+    checkMetaConnection();
   }, []);
 
   const checkAuth = async () => {
@@ -71,6 +74,25 @@ export default function DashboardPage() {
       console.error('Failed to load dashboard:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkMetaConnection = async () => {
+    try {
+      const response = await api.get('/api/meta/status');
+      setMetaConnected(response.data.connected);
+      setMetaAccountId(response.data.ad_account_id);
+    } catch (error) {
+      console.error('Failed to check Meta connection:', error);
+    }
+  };
+
+  const connectMetaAccount = async () => {
+    try {
+      const response = await api.get('/api/meta/connect');
+      window.location.href = response.data.auth_url;
+    } catch (error) {
+      console.error('Failed to connect Meta account:', error);
     }
   };
 
@@ -122,13 +144,13 @@ export default function DashboardPage() {
               Creatives
             </Button>
           </Link>
-          <Link href="/dashboard">
+          <Link href="/ab-testing">
             <Button variant="ghost" className="w-full justify-start gap-3" size="lg">
               <TestTube className="h-5 w-5" />
               A/B Tests
             </Button>
           </Link>
-          <Link href="/dashboard">
+          <Link href="/analytics">
             <Button variant="ghost" className="w-full justify-start gap-3" size="lg">
               <BarChart3 className="h-5 w-5" />
               Analytics
@@ -236,6 +258,58 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Meta Connection Card */}
+          <Card className={`border-2 ${metaConnected ? 'border-green-500/50' : 'border-orange-500/50'}`}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    {metaConnected ? (
+                      <>
+                        <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse" />
+                        Meta Account Connected
+                      </>
+                    ) : (
+                      <>
+                        <div className="h-3 w-3 rounded-full bg-orange-500" />
+                        Connect Meta Account
+                      </>
+                    )}
+                  </CardTitle>
+                  <CardDescription>
+                    {metaConnected
+                      ? `Connected to ad account: ${metaAccountId}`
+                      : 'Connect your Meta (Facebook) account to run A/B tests and track analytics'}
+                  </CardDescription>
+                </div>
+                {!metaConnected && (
+                  <Button onClick={connectMetaAccount} size="lg" className="gap-2">
+                    <TestTube className="h-5 w-5" />
+                    Connect Meta
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            {metaConnected && (
+              <CardContent>
+                <div className="flex gap-4">
+                  <Link href="/ab-testing">
+                    <Button variant="outline" className="gap-2">
+                      <TestTube className="h-4 w-4" />
+                      Manage A/B Tests
+                    </Button>
+                  </Link>
+                  <Link href="/analytics">
+                    <Button variant="outline" className="gap-2">
+                      <BarChart3 className="h-4 w-4" />
+                      View Analytics
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            )}
+          </Card>
 
           {/* Recent Creatives */}
           <Card className="border-2">

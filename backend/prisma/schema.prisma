@@ -48,16 +48,68 @@ model Creative {
 model ABTest {
   id              String   @id @default(uuid())
   userId          String   @map("user_id")
+  name            String?
   creativeIds     String[] @map("creative_ids")
   metaCampaignId  String?  @map("meta_campaign_id")
+  metaAdSetId     String?  @map("meta_ad_set_id")
+  budget          Float?
+  objective       String?
+  audience        Json?
+  durationDays    Int?     @map("duration_days")
   results         Json?
   status          String   @default("draft")
+  winnerCreativeId String? @map("winner_creative_id")
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variants        ABTestVariant[]
+  analytics       AdAnalytics[]
 
   @@map("ab_tests")
+}
+
+model ABTestVariant {
+  id              String   @id @default(uuid())
+  abTestId        String   @map("ab_test_id")
+  creativeId      String   @map("creative_id")
+  metaAdId        String?  @map("meta_ad_id")
+  metaCreativeId  String?  @map("meta_creative_id")
+  trafficPercentage Float? @map("traffic_percentage")
+  status          String   @default("draft")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  abTest          ABTest   @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+
+  @@map("ab_test_variants")
+}
+
+model AdAnalytics {
+  id              String   @id @default(uuid())
+  abTestId        String?  @map("ab_test_id")
+  metaAdId        String   @map("meta_ad_id")
+  creativeId      String?  @map("creative_id")
+  date            DateTime @default(now())
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  ctr             Float    @default(0)
+  conversions     Int      @default(0)
+  spend           Float    @default(0)
+  cpc             Float    @default(0)
+  cpm             Float    @default(0)
+  roas            Float?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  abTest          ABTest?  @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+
+  @@map("ad_analytics")
+  @@index([metaAdId])
+  @@index([creativeId])
+  @@index([date])
 }
 
 model Billing {

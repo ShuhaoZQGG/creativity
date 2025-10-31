@@ -116,6 +116,12 @@ export default function DashboardPage() {
               Generate
             </Button>
           </Link>
+          <Link href="/creatives">
+            <Button variant="ghost" className="w-full justify-start gap-3" size="lg">
+              <ImageIcon className="h-5 w-5" />
+              Creatives
+            </Button>
+          </Link>
           <Link href="/dashboard">
             <Button variant="ghost" className="w-full justify-start gap-3" size="lg">
               <TestTube className="h-5 w-5" />
@@ -239,7 +245,7 @@ export default function DashboardPage() {
                   <CardTitle className="text-xl">Recent Creatives</CardTitle>
                   <CardDescription>Your most recently generated ad creatives</CardDescription>
                 </div>
-                <Link href="/generate">
+                <Link href="/creatives">
                   <Button variant="outline">View All</Button>
                 </Link>
               </div>

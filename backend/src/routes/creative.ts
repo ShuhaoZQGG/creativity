@@ -159,12 +159,78 @@ router.post('/score', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Get user's creatives
+// Get user's creatives with pagination, filtering, and sorting
 router.get('/creatives', requireAuth, async (req: AuthRequest, res) => {
   try {
+    const {
+      page = '1',
+      limit = '20',
+      search = '',
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      startDate,
+      endDate,
+    } = req.query;
+
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build where clause
+    const where: any = { userId: req.user!.id };
+
+    // Add search filter (search in headline, body, brand_name)
+    if (search) {
+      where.OR = [
+        {
+          textVariant: {
+            path: ['headline'],
+            string_contains: search as string,
+          },
+        },
+        {
+          textVariant: {
+            path: ['body'],
+            string_contains: search as string,
+          },
+        },
+        {
+          inputContext: {
+            path: ['brand_name'],
+            string_contains: search as string,
+          },
+        },
+      ];
+    }
+
+    // Add date range filter
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        where.createdAt.gte = new Date(startDate as string);
+      }
+      if (endDate) {
+        where.createdAt.lte = new Date(endDate as string);
+      }
+    }
+
+    // Build orderBy clause
+    const orderBy: any = {};
+    if (sortBy === 'createdAt') {
+      orderBy.createdAt = sortOrder;
+    } else if (sortBy === 'score') {
+      orderBy.score = sortOrder;
+    }
+
+    // Get total count for pagination
+    const total = await prisma.creative.count({ where });
+
+    // Get creatives
     const creatives = await prisma.creative.findMany({
-      where: { userId: req.user!.id },
-      orderBy: { createdAt: 'desc' },
+      where,
+      orderBy,
+      skip,
+      take: limitNum,
     });
 
     // Generate signed URLs for all image keys
@@ -174,7 +240,15 @@ router.get('/creatives', requireAuth, async (req: AuthRequest, res) => {
       videoUrls: (creative.videoUrls as string[]).map(s3Key => getSignedUrl(s3Key)),
     }));
 
-    res.json({ creatives: creativesWithSignedUrls });
+    res.json({
+      creatives: creativesWithSignedUrls,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
   } catch (error) {
     console.error('Get creatives error:', error);
     res.status(500).json({ error: 'Failed to get creatives' });
@@ -203,6 +277,28 @@ router.get('/creatives/:id', requireAuth, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get creative error:', error);
     res.status(500).json({ error: 'Failed to get creative' });
+  }
+});
+
+// Delete a creative
+router.delete('/creatives/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const creative = await prisma.creative.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!creative || creative.userId !== req.user!.id) {
+      return res.status(404).json({ error: 'Creative not found' });
+    }
+
+    await prisma.creative.delete({
+      where: { id: req.params.id },
+    });
+
+    res.json({ success: true, message: 'Creative deleted successfully' });
+  } catch (error) {
+    console.error('Delete creative error:', error);
+    res.status(500).json({ error: 'Failed to delete creative' });
   }
 });
 

@@ -18,7 +18,8 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Loader2
+  Loader2,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface Creative {
@@ -110,6 +111,12 @@ export default function GeneratePage() {
             <Button variant="secondary" className="w-full justify-start gap-3" size="lg">
               <Wand2 className="h-5 w-5" />
               Generate
+            </Button>
+          </Link>
+          <Link href="/creatives">
+            <Button variant="ghost" className="w-full justify-start gap-3" size="lg">
+              <ImageIcon className="h-5 w-5" />
+              Creatives
             </Button>
           </Link>
           <Link href="/dashboard">

@@ -9,6 +9,13 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+export interface WebsiteAnalysisData {
+  brandColors?: string[];
+  styleKeywords?: string[];
+  tone?: string;
+  description?: string;
+}
+
 export interface GenerateTextParams {
   brandName: string;
   productDescription: string;
@@ -16,6 +23,7 @@ export interface GenerateTextParams {
   tone?: string;
   numVariants?: number;
   websiteUrl?: string;
+  websiteAnalysis?: WebsiteAnalysisData;
 }
 
 export interface TextVariant {
@@ -31,14 +39,31 @@ export async function generateAdText(params: GenerateTextParams): Promise<TextVa
     targetAudience,
     tone = 'friendly',
     numVariants = 3,
+    websiteAnalysis,
   } = params;
+
+  // Build brand context from website analysis if available
+  let brandContext = '';
+  if (websiteAnalysis) {
+    if (websiteAnalysis.brandColors && websiteAnalysis.brandColors.length > 0) {
+      brandContext += `\nBrand Colors: ${websiteAnalysis.brandColors.join(', ')}`;
+    }
+    if (websiteAnalysis.styleKeywords && websiteAnalysis.styleKeywords.length > 0) {
+      brandContext += `\nBrand Style: ${websiteAnalysis.styleKeywords.join(', ')}`;
+    }
+    if (websiteAnalysis.description) {
+      brandContext += `\nBrand Description: ${websiteAnalysis.description}`;
+    }
+  }
+
+  const effectiveTone = websiteAnalysis?.tone || tone;
 
   const prompt = `You are an expert ad copywriter. Generate ${numVariants} different ad creative variants for a Meta (Facebook/Instagram) ad campaign.
 
 Brand: ${brandName}
 Product: ${productDescription}
 Target Audience: ${targetAudience}
-Tone: ${tone}
+Tone: ${effectiveTone}${brandContext}
 
 For each variant, provide:
 1. A compelling headline (max 40 characters)
@@ -46,7 +71,7 @@ For each variant, provide:
 3. A clear call-to-action (CTA)
 
 Format your response as a JSON array with objects containing "headline", "body", and "cta" fields.
-Make each variant unique and engaging, optimized for ${targetAudience}.`;
+Make each variant unique and engaging, optimized for ${targetAudience}.${websiteAnalysis ? ' Match the brand style and tone extracted from the website.' : ''}`;
 
   try {
     // Use Claude for text generation

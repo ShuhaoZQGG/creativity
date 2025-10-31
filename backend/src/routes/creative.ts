@@ -4,6 +4,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../lib/prisma.js';
 import { generateAdText, generateImage, scoreAdCreative, generateImageVariation } from '../services/ai.js';
 import { uploadImageFromUrl, getSignedUrl, uploadImage } from '../services/storage.js';
+import { analyzeWebsite } from '../services/websiteScraper.js';
 
 const router = Router();
 
@@ -54,6 +55,39 @@ router.post('/upload-base-image', requireAuth, upload.single('image'), async (re
   }
 });
 
+// Analyze website for brand style
+router.post('/analyze-website', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { website_url } = req.body;
+
+    if (!website_url) {
+      return res.status(400).json({ error: 'website_url is required' });
+    }
+
+    console.log('[API] Analyzing website:', website_url);
+    const userId = req.user!.id;
+
+    const analysis = await analyzeWebsite(website_url, userId);
+
+    // Generate signed URL for screenshot
+    const screenshotUrl = getSignedUrl(analysis.screenshotUrl);
+
+    res.json({
+      success: true,
+      analysis: {
+        ...analysis,
+        screenshotUrl, // Override with signed URL
+      },
+    });
+  } catch (error: any) {
+    console.error('Analyze website error:', error);
+    res.status(500).json({
+      error: 'Failed to analyze website',
+      message: error.message,
+    });
+  }
+});
+
 // Generate ad creatives
 router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -66,6 +100,7 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
       input_image_url,
       website_url,
       base_image_s3_key,
+      website_analysis_data,
     } = req.body;
 
     console.log('[Creative] Generate request received');
@@ -73,6 +108,7 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
     console.log('[Creative] Brand:', brand_name);
     console.log('[Creative] Variants requested:', num_variants);
     console.log('[Creative] Base image provided:', !!base_image_s3_key);
+    console.log('[Creative] Website analysis provided:', !!website_analysis_data);
 
     if (!brand_name || !product_description || !target_audience) {
       return res.status(400).json({
@@ -90,6 +126,7 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
       targetAudience: target_audience,
       tone,
       numVariants: num_variants,
+      websiteAnalysis: website_analysis_data,
     });
     console.log('[Creative] Text variants generated:', textVariants.length);
 

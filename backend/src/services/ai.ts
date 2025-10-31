@@ -226,7 +226,7 @@ Format as JSON: {"overall": 0.85, "clarity": 0.9, "engagement": 0.8, "cta": 0.85
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-3-sonnet-20240229',
+      model: 'claude-3-opus-20240229',
       max_tokens: 500,
       messages: [
         {

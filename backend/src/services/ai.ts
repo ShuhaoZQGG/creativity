@@ -51,7 +51,7 @@ Make each variant unique and engaging, optimized for ${targetAudience}.`;
   try {
     // Use Claude for text generation
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-5-sonnet-20240620',
       max_tokens: 2000,
       messages: [
         {
@@ -226,7 +226,7 @@ Format as JSON: {"overall": 0.85, "clarity": 0.9, "engagement": 0.8, "cta": 0.85
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-5-sonnet-20240620',
       max_tokens: 500,
       messages: [
         {

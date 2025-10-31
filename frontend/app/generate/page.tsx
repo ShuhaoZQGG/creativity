@@ -364,7 +364,7 @@ export default function GeneratePage() {
                               </div>
                               <div>
                                 <p className="text-sm font-medium">Click to upload image</p>
-                                <p className="text-xs text-muted-foreground">PNG, JPG up to 10MB</p>
+                                <p className="text-xs text-muted-foreground">PNG, JPG, AVIF, WebP up to 10MB</p>
                               </div>
                             </label>
                           </div>

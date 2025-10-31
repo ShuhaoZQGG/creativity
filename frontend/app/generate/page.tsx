@@ -57,6 +57,10 @@ export default function GeneratePage() {
   const [baseImageS3Key, setBaseImageS3Key] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // Website analysis states
+  const [websiteAnalysis, setWebsiteAnalysis] = useState<any>(null);
+  const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -110,6 +114,30 @@ export default function GeneratePage() {
     setBaseImageS3Key(null);
   };
 
+  const handleAnalyzeWebsite = async () => {
+    if (!websiteUrl) {
+      alert('Please enter a website URL');
+      return;
+    }
+
+    setAnalyzingWebsite(true);
+    try {
+      const response = await api.post('/api/analyze-website', {
+        website_url: websiteUrl,
+      });
+
+      setWebsiteAnalysis(response.data.analysis);
+      // Auto-populate tone from analysis
+      if (response.data.analysis.tone) {
+        setTone(response.data.analysis.tone);
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to analyze website');
+    } finally {
+      setAnalyzingWebsite(false);
+    }
+  };
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -141,6 +169,12 @@ export default function GeneratePage() {
         website_url: websiteUrl,
         num_variants: numVariants,
         base_image_s3_key: useBaseImage ? s3Key : null,
+        website_analysis_data: websiteAnalysis ? {
+          brandColors: websiteAnalysis.brandColors,
+          styleKeywords: websiteAnalysis.styleKeywords,
+          tone: websiteAnalysis.tone,
+          description: websiteAnalysis.description,
+        } : null,
       });
 
       setCreatives(response.data.creatives);
@@ -297,14 +331,88 @@ export default function GeneratePage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="websiteUrl">Website URL (optional)</Label>
-                    <Input
-                      id="websiteUrl"
-                      type="url"
-                      placeholder="https://ecobrew.com"
-                      value={websiteUrl}
-                      onChange={(e) => setWebsiteUrl(e.target.value)}
-                      className="h-11"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="websiteUrl"
+                        type="url"
+                        placeholder="https://ecobrew.com"
+                        value={websiteUrl}
+                        onChange={(e) => setWebsiteUrl(e.target.value)}
+                        className="h-11 flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleAnalyzeWebsite}
+                        disabled={!websiteUrl || analyzingWebsite}
+                        className="h-11"
+                      >
+                        {analyzingWebsite ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Analyze'
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      AI will extract brand colors, style, and tone from your website
+                    </p>
+
+                    {/* Website Analysis Results */}
+                    {websiteAnalysis && (
+                      <div className="border rounded-lg p-4 space-y-3 bg-muted/20 mt-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium">Website Analysis</p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setWebsiteAnalysis(null)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {websiteAnalysis.brandColors && websiteAnalysis.brandColors.length > 0 && (
+                          <div>
+                            <p className="text-xs font-medium mb-2">Brand Colors:</p>
+                            <div className="flex gap-2">
+                              {websiteAnalysis.brandColors.map((color: string, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="w-8 h-8 rounded border-2 border-white shadow-sm"
+                                  style={{ backgroundColor: color }}
+                                  title={color}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {websiteAnalysis.styleKeywords && websiteAnalysis.styleKeywords.length > 0 && (
+                          <div>
+                            <p className="text-xs font-medium mb-2">Style:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {websiteAnalysis.styleKeywords.map((keyword: string, idx: number) => (
+                                <span
+                                  key={idx}
+                                  className="px-2 py-1 bg-primary/10 text-primary text-xs rounded"
+                                >
+                                  {keyword}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {websiteAnalysis.tone && (
+                          <div>
+                            <p className="text-xs font-medium mb-1">Tone:</p>
+                            <p className="text-sm capitalize">{websiteAnalysis.tone}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">

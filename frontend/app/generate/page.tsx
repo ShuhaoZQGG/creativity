@@ -19,7 +19,9 @@ import {
   Settings,
   LogOut,
   Loader2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Upload,
+  X
 } from 'lucide-react';
 
 interface Creative {
@@ -48,6 +50,13 @@ export default function GeneratePage() {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [numVariants, setNumVariants] = useState(3);
 
+  // Base image upload states
+  const [useBaseImage, setUseBaseImage] = useState(false);
+  const [baseImageFile, setBaseImageFile] = useState<File | null>(null);
+  const [baseImagePreview, setBaseImagePreview] = useState<string | null>(null);
+  const [baseImageS3Key, setBaseImageS3Key] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -59,12 +68,71 @@ export default function GeneratePage() {
     }
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setBaseImageFile(file);
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBaseImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleImageUpload = async () => {
+    if (!baseImageFile) return;
+
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', baseImageFile);
+
+      const response = await api.post('/api/upload-base-image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      setBaseImageS3Key(response.data.s3Key);
+      alert('Image uploaded successfully!');
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to upload image');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setBaseImageFile(null);
+    setBaseImagePreview(null);
+    setBaseImageS3Key(null);
+  };
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setCreatives([]);
 
     try {
+      // If using base image, upload first if not already uploaded
+      let s3Key = baseImageS3Key;
+      if (useBaseImage && baseImageFile && !baseImageS3Key) {
+        setUploadingImage(true);
+        const formData = new FormData();
+        formData.append('image', baseImageFile);
+
+        const uploadResponse = await api.post('/api/upload-base-image', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        s3Key = uploadResponse.data.s3Key;
+        setBaseImageS3Key(s3Key);
+        setUploadingImage(false);
+      }
+
       const response = await api.post('/api/generate', {
         brand_name: brandName,
         product_description: productDescription,
@@ -72,6 +140,7 @@ export default function GeneratePage() {
         tone,
         website_url: websiteUrl,
         num_variants: numVariants,
+        base_image_s3_key: useBaseImage ? s3Key : null,
       });
 
       setCreatives(response.data.creatives);
@@ -79,6 +148,7 @@ export default function GeneratePage() {
       alert(error.response?.data?.error || 'Failed to generate creatives');
     } finally {
       setLoading(false);
+      setUploadingImage(false);
     }
   };
 
@@ -251,8 +321,87 @@ export default function GeneratePage() {
                     <p className="text-xs text-muted-foreground">Generate 1-5 creative variants</p>
                   </div>
 
-                  <Button type="submit" className="w-full h-11" disabled={loading} size="lg">
-                    {loading ? (
+                  {/* Base Image Upload Section */}
+                  <div className="border-t pt-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base">Base Image (optional)</Label>
+                      <Button
+                        type="button"
+                        variant={useBaseImage ? "secondary" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setUseBaseImage(!useBaseImage);
+                          if (useBaseImage) {
+                            handleRemoveImage();
+                          }
+                        }}
+                      >
+                        {useBaseImage ? "Using Base Image" : "Upload Base Image"}
+                      </Button>
+                    </div>
+
+                    {useBaseImage && (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          Upload an image to generate variations based on your style. The AI will create variants while maintaining brand consistency.
+                        </p>
+
+                        {!baseImagePreview ? (
+                          <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                            <input
+                              type="file"
+                              id="base-image-input"
+                              className="hidden"
+                              accept="image/*"
+                              onChange={handleImageSelect}
+                            />
+                            <label
+                              htmlFor="base-image-input"
+                              className="cursor-pointer flex flex-col items-center gap-2"
+                            >
+                              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Upload className="h-6 w-6 text-primary" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">Click to upload image</p>
+                                <p className="text-xs text-muted-foreground">PNG, JPG up to 10MB</p>
+                              </div>
+                            </label>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <img
+                              src={baseImagePreview}
+                              alt="Base image preview"
+                              className="w-full h-48 object-cover rounded-lg"
+                            />
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon"
+                              className="absolute top-2 right-2"
+                              onClick={handleRemoveImage}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                            {baseImageS3Key && (
+                              <div className="absolute bottom-2 left-2 bg-green-500 text-white px-2 py-1 rounded text-xs font-medium">
+                                Uploaded
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <Button type="submit" className="w-full h-11" disabled={loading || uploadingImage} size="lg">
+                    {uploadingImage ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Uploading Image...
+                      </span>
+                    ) : loading ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="h-5 w-5 animate-spin" />
                         Generating Creatives...

@@ -137,6 +137,65 @@ export async function generateImage(prompt: string, retries = 3): Promise<string
   throw new Error('Failed to generate image');
 }
 
+export async function generateImageVariation(
+  baseImageUrl: string,
+  prompt: string,
+  retries = 3
+): Promise<string> {
+  console.log('[AI] Generating image variation');
+  console.log('[AI] Base image URL:', baseImageUrl.substring(0, 100) + '...');
+  console.log('[AI] Variation prompt:', prompt);
+
+  // For now, we'll use DALL-E 3 with the prompt + description of wanting variation
+  // OpenAI's variations endpoint only works with DALL-E 2 and doesn't support custom prompts
+  // A better approach would be to use img2img from Stability AI, but for simplicity we'll use DALL-E 3
+
+  const fullPrompt = `Professional advertising image variation: ${prompt}. Create a unique variant while maintaining the same brand style and composition. High quality, eye-catching, suitable for social media ads.`;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`[AI] Variation attempt ${attempt}/${retries}`);
+
+      const response = await openai.images.generate({
+        model: 'dall-e-3',
+        prompt: fullPrompt,
+        n: 1,
+        size: '1024x1024',
+        quality: 'standard',
+      });
+
+      console.log('[AI] Image variation generated successfully');
+      return response.data[0].url!;
+    } catch (error: any) {
+      console.error(`[AI] Variation attempt ${attempt}/${retries} failed`);
+      console.error('[AI] Error details:', {
+        status: error.status,
+        type: error.type,
+        message: error.message,
+      });
+
+      if (error.status === 500 && attempt < retries) {
+        const waitTime = attempt * 2000;
+        console.log(`[AI] Retrying in ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      if (error.status === 400 || error.type === 'invalid_request_error') {
+        console.error('[AI] Content policy or invalid request error - not retrying');
+        throw new Error(`Image variation failed: ${error.message}`);
+      }
+
+      if (attempt === retries) {
+        console.error('[AI] All retry attempts exhausted');
+        throw new Error(`Failed to generate image variation after ${retries} attempts: ${error.message}`);
+      }
+    }
+  }
+
+  throw new Error('Failed to generate image variation');
+}
+
 export interface ScoreResult {
   overall: number;
   clarity: number;

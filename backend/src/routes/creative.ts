@@ -1,10 +1,58 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { requireAuth, AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../lib/prisma.js';
-import { generateAdText, generateImage, scoreAdCreative } from '../services/ai.js';
-import { uploadImageFromUrl, getSignedUrl } from '../services/storage.js';
+import { generateAdText, generateImage, scoreAdCreative, generateImageVariation } from '../services/ai.js';
+import { uploadImageFromUrl, getSignedUrl, uploadImage } from '../services/storage.js';
 
 const router = Router();
+
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept images only
+    if (!file.mimetype.startsWith('image/')) {
+      cb(new Error('Only image files are allowed'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+// Upload base image for creative generation
+router.post('/upload-base-image', requireAuth, upload.single('image'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    console.log('[Upload] Received image upload');
+    console.log('[Upload] File size:', req.file.size, 'bytes');
+    console.log('[Upload] Content type:', req.file.mimetype);
+
+    const userId = req.user!.id;
+
+    // Upload to S3
+    const s3Key = await uploadImage(req.file.buffer, userId, req.file.mimetype);
+    console.log('[Upload] Uploaded to S3:', s3Key);
+
+    // Generate signed URL for the response
+    const signedUrl = getSignedUrl(s3Key);
+
+    res.json({
+      success: true,
+      s3Key,
+      imageUrl: signedUrl,
+    });
+  } catch (error) {
+    console.error('Upload base image error:', error);
+    res.status(500).json({ error: 'Failed to upload image' });
+  }
+});
 
 // Generate ad creatives
 router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
@@ -17,12 +65,14 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
       num_variants = 3,
       input_image_url,
       website_url,
+      base_image_s3_key,
     } = req.body;
 
     console.log('[Creative] Generate request received');
     console.log('[Creative] User ID:', req.user!.id);
     console.log('[Creative] Brand:', brand_name);
     console.log('[Creative] Variants requested:', num_variants);
+    console.log('[Creative] Base image provided:', !!base_image_s3_key);
 
     if (!brand_name || !product_description || !target_audience) {
       return res.status(400).json({
@@ -50,16 +100,34 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
         console.log(`[Creative] Processing variant ${index + 1}/${textVariants.length}`);
         console.log(`[Creative] Headline: ${textVariant.headline}`);
 
-        // Generate image
-        const imagePrompt = `${product_description} for ${target_audience}, ${brand_name} brand style`;
-        console.log(`[Creative] Generating image for variant ${index + 1}...`);
-        const generatedImageUrl = await generateImage(imagePrompt);
-        console.log(`[Creative] Image generated for variant ${index + 1}`);
+        let s3Key: string;
 
-        // Upload to S3 (returns S3 key)
-        console.log(`[Creative] Uploading to S3 for variant ${index + 1}...`);
-        const s3Key = await uploadImageFromUrl(generatedImageUrl, userId);
-        console.log(`[Creative] Uploaded to S3: ${s3Key}`);
+        if (base_image_s3_key) {
+          // Use base image - generate variation
+          console.log(`[Creative] Using base image for variant ${index + 1}...`);
+          const baseImageUrl = getSignedUrl(base_image_s3_key);
+          const imagePrompt = `${product_description} for ${target_audience}, ${brand_name} brand style. ${textVariant.headline}`;
+
+          console.log(`[Creative] Generating image variation for variant ${index + 1}...`);
+          const generatedImageUrl = await generateImageVariation(baseImageUrl, imagePrompt);
+          console.log(`[Creative] Image variation generated for variant ${index + 1}`);
+
+          // Upload to S3 (returns S3 key)
+          console.log(`[Creative] Uploading to S3 for variant ${index + 1}...`);
+          s3Key = await uploadImageFromUrl(generatedImageUrl, userId);
+          console.log(`[Creative] Uploaded to S3: ${s3Key}`);
+        } else {
+          // Generate image from scratch
+          const imagePrompt = `${product_description} for ${target_audience}, ${brand_name} brand style`;
+          console.log(`[Creative] Generating image for variant ${index + 1}...`);
+          const generatedImageUrl = await generateImage(imagePrompt);
+          console.log(`[Creative] Image generated for variant ${index + 1}`);
+
+          // Upload to S3 (returns S3 key)
+          console.log(`[Creative] Uploading to S3 for variant ${index + 1}...`);
+          s3Key = await uploadImageFromUrl(generatedImageUrl, userId);
+          console.log(`[Creative] Uploaded to S3: ${s3Key}`);
+        }
 
         // Score the creative
         console.log(`[Creative] Scoring variant ${index + 1}...`);
@@ -81,6 +149,7 @@ router.post('/generate', requireAuth, async (req: AuthRequest, res) => {
               target_audience,
               tone,
               website_url,
+              base_image_s3_key,
             },
             textVariant: {
               headline: textVariant.headline,

@@ -124,9 +124,9 @@ export async function generateImage(prompt: string, retries = 3): Promise<string
       });
 
       console.log('[AI] Image generated successfully');
-      console.log('[AI] Image URL:', response.data[0].url);
+      console.log('[AI] Image URL:', response.data?.[0]?.url);
 
-      return response.data[0].url!;
+      return response.data?.[0]?.url!;
     } catch (error: any) {
       console.error(`[AI] Attempt ${attempt}/${retries} failed`);
       console.error('[AI] Error details:', {
@@ -190,7 +190,7 @@ export async function generateImageVariation(
       });
 
       console.log('[AI] Image variation generated successfully');
-      return response.data[0].url!;
+      return response.data?.[0]?.url!;
     } catch (error: any) {
       console.error(`[AI] Variation attempt ${attempt}/${retries} failed`);
       console.error('[AI] Error details:', {

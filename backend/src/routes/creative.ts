@@ -341,7 +341,7 @@ router.get('/creatives', requireAuth, async (req: AuthRequest, res) => {
 
     // Generate signed URLs for all image keys
     const creativesWithSignedUrls = await Promise.all(
-      creatives.map(async creative => ({
+      creatives.map(async (creative: any) => ({
         ...creative,
         imageUrls: await Promise.all((creative.imageUrls as string[]).map(s3Key => getSignedUrl(s3Key))),
         videoUrls: await Promise.all((creative.videoUrls as string[]).map(s3Key => getSignedUrl(s3Key))),

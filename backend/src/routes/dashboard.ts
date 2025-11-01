@@ -23,12 +23,12 @@ router.get('/dashboard', requireAuth, async (req: AuthRequest, res) => {
 
     // Calculate summary statistics
     const creativesWithMetrics = await Promise.all(
-      creatives.map(async (creative) => {
+      creatives.map(async (creative: any) => {
         const textVariant = creative.textVariant as any;
         const score = creative.score as any;
 
         // Find AB test results for this creative
-        const relatedTest = abTests.find((test) =>
+        const relatedTest = abTests.find((test: any) =>
           test.creativeIds.includes(creative.id)
         );
 
@@ -60,7 +60,7 @@ router.get('/dashboard', requireAuth, async (req: AuthRequest, res) => {
 
     const avgScore =
       creatives.length > 0
-        ? creatives.reduce((sum, c) => {
+        ? creatives.reduce((sum: any, c: any) => {
             const score = c.score as any;
             return sum + (score?.overall || 0);
           }, 0) / creatives.length
@@ -116,7 +116,7 @@ router.get('/analytics', requireAuth, async (req: AuthRequest, res) => {
     });
 
     // Group by date
-    const dailyStats = creatives.reduce((acc: any, creative) => {
+    const dailyStats = creatives.reduce((acc: any, creative: any) => {
       const date = creative.createdAt.toISOString().split('T')[0];
 
       if (!acc[date]) {

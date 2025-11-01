@@ -155,7 +155,7 @@ router.post('/abtest', requireAuth, async (req: AuthRequest, res) => {
 
     // Create ads for each creative
     const variants = await Promise.all(
-      creatives.map(async (creative) => {
+      creatives.map(async (creative: any) => {
         const textVariant = creative.textVariant as any;
         const inputContext = creative.inputContext as any;
 

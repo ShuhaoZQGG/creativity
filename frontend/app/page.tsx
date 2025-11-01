@@ -247,9 +247,22 @@ export default function Home() {
               <Sparkles className="h-5 w-5 text-primary" />
               <span className="font-bold">Creativity</span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              © 2025 Creativity. All rights reserved.
-            </p>
+            <div className="flex flex-col sm:flex-row items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-4">
+                <Link href="/privacy" className="hover:text-primary transition-colors">
+                  Privacy Policy
+                </Link>
+                <Link href="/terms" className="hover:text-primary transition-colors">
+                  Terms of Service
+                </Link>
+                <Link href="/data-deletion" className="hover:text-primary transition-colors">
+                  Data Deletion
+                </Link>
+              </div>
+              <p>
+                © 2025 Creativity. All rights reserved.
+              </p>
+            </div>
           </div>
         </div>
       </footer>

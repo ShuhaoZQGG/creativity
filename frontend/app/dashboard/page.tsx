@@ -49,12 +49,17 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [user, setUser] = useState<any>(null);
   const [metaConnected, setMetaConnected] = useState(false);
+  const [metaAdsAccess, setMetaAdsAccess] = useState(false);
   const [metaAccountId, setMetaAccountId] = useState<string | null>(null);
+  const [metaMode, setMetaMode] = useState<string>('development');
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuth();
     loadDashboard();
     checkMetaConnection();
+    handleCallbackParams();
   }, []);
 
   const checkAuth = async () => {
@@ -81,9 +86,38 @@ export default function DashboardPage() {
     try {
       const response = await api.get('/api/meta/status');
       setMetaConnected(response.data.connected);
+      setMetaAdsAccess(response.data.ads_access);
       setMetaAccountId(response.data.ad_account_id);
+      setMetaMode(response.data.mode);
+      if (response.data.message) {
+        setConnectionMessage(response.data.message);
+      }
     } catch (error) {
       console.error('Failed to check Meta connection:', error);
+    }
+  };
+
+  const handleCallbackParams = () => {
+    const params = new URLSearchParams(window.location.search);
+    const metaConnected = params.get('meta_connected');
+    const adsAccess = params.get('ads_access');
+    const error = params.get('error');
+
+    if (error) {
+      setConnectionError(decodeURIComponent(error));
+    } else if (metaConnected === 'true') {
+      if (adsAccess === 'true') {
+        setConnectionMessage('Successfully connected to Meta with full ads access!');
+      } else {
+        setConnectionMessage('Successfully connected to Facebook! Note: Ads features require App Review.');
+      }
+      // Refresh connection status
+      checkMetaConnection();
+    }
+
+    // Clean up URL
+    if (metaConnected || error) {
+      window.history.replaceState({}, '', window.location.pathname);
     }
   };
 
@@ -93,6 +127,15 @@ export default function DashboardPage() {
       window.location.href = response.data.auth_url;
     } catch (error) {
       console.error('Failed to connect Meta account:', error);
+    }
+  };
+
+  const loginWithFacebook = async () => {
+    try {
+      const response = await api.get('/api/meta/login');
+      window.location.href = response.data.auth_url;
+    } catch (error) {
+      console.error('Failed to login with Facebook:', error);
     }
   };
 
@@ -259,53 +302,123 @@ export default function DashboardPage() {
             </Card>
           </div>
 
+          {/* Connection Messages */}
+          {connectionMessage && (
+            <div className="bg-green-500/10 border-2 border-green-500/50 rounded-lg p-4 flex items-center justify-between">
+              <p className="text-green-700 dark:text-green-400">{connectionMessage}</p>
+              <Button variant="ghost" size="sm" onClick={() => setConnectionMessage(null)}>
+                ✕
+              </Button>
+            </div>
+          )}
+
+          {connectionError && (
+            <div className="bg-red-500/10 border-2 border-red-500/50 rounded-lg p-4 flex items-center justify-between">
+              <p className="text-red-700 dark:text-red-400">{connectionError}</p>
+              <Button variant="ghost" size="sm" onClick={() => setConnectionError(null)}>
+                ✕
+              </Button>
+            </div>
+          )}
+
           {/* Meta Connection Card */}
-          <Card className={`border-2 ${metaConnected ? 'border-green-500/50' : 'border-orange-500/50'}`}>
+          <Card className={`border-2 ${metaAdsAccess ? 'border-green-500/50' : metaConnected ? 'border-blue-500/50' : 'border-orange-500/50'}`}>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex-1">
                   <CardTitle className="text-xl flex items-center gap-2">
-                    {metaConnected ? (
+                    {metaAdsAccess ? (
                       <>
                         <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse" />
-                        Meta Account Connected
+                        Meta Ads Connected
+                      </>
+                    ) : metaConnected ? (
+                      <>
+                        <div className="h-3 w-3 rounded-full bg-blue-500 animate-pulse" />
+                        Facebook Connected
                       </>
                     ) : (
                       <>
                         <div className="h-3 w-3 rounded-full bg-orange-500" />
-                        Connect Meta Account
+                        Connect to Meta
                       </>
                     )}
+                    {metaMode === 'development' && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-700 dark:text-yellow-400">
+                        DEV MODE
+                      </span>
+                    )}
                   </CardTitle>
-                  <CardDescription>
-                    {metaConnected
-                      ? `Connected to ad account: ${metaAccountId}`
+                  <CardDescription className="mt-2">
+                    {metaAdsAccess
+                      ? `Full access to ad account: ${metaAccountId}`
+                      : metaConnected
+                      ? connectionMessage || 'Connected with basic permissions. Upgrade to access ads features.'
                       : 'Connect your Meta (Facebook) account to run A/B tests and track analytics'}
                   </CardDescription>
                 </div>
                 {!metaConnected && (
-                  <Button onClick={connectMetaAccount} size="lg" className="gap-2">
-                    <TestTube className="h-5 w-5" />
-                    Connect Meta
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    <Button onClick={connectMetaAccount} size="lg" className="gap-2">
+                      <TestTube className="h-5 w-5" />
+                      {metaMode === 'development' ? 'Connect Meta (Dev)' : 'Connect Meta Ads'}
+                    </Button>
+                    <Button onClick={loginWithFacebook} variant="outline" size="lg" className="gap-2">
+                      Login with Facebook
+                    </Button>
+                  </div>
                 )}
               </div>
             </CardHeader>
-            {metaConnected && (
+            {(metaConnected || metaAdsAccess) && (
               <CardContent>
-                <div className="flex gap-4">
-                  <Link href="/ab-testing">
-                    <Button variant="outline" className="gap-2">
-                      <TestTube className="h-4 w-4" />
-                      Manage A/B Tests
-                    </Button>
-                  </Link>
-                  <Link href="/analytics">
-                    <Button variant="outline" className="gap-2">
-                      <BarChart3 className="h-4 w-4" />
-                      View Analytics
-                    </Button>
-                  </Link>
+                <div className="space-y-4">
+                  {metaAdsAccess ? (
+                    <div className="flex gap-4">
+                      <Link href="/ab-testing">
+                        <Button variant="outline" className="gap-2">
+                          <TestTube className="h-4 w-4" />
+                          Manage A/B Tests
+                        </Button>
+                      </Link>
+                      <Link href="/analytics">
+                        <Button variant="outline" className="gap-2">
+                          <BarChart3 className="h-4 w-4" />
+                          View Analytics
+                        </Button>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                      <h4 className="font-semibold mb-2 text-blue-700 dark:text-blue-400">
+                        Need Full Ads Access?
+                      </h4>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        To create campaigns and run A/B tests, your Meta app needs to go through App Review for the following permissions:
+                      </p>
+                      <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1 mb-4">
+                        <li>ads_management - Create and manage ad campaigns</li>
+                        <li>ads_read - Read ad performance data</li>
+                        <li>business_management - Access business accounts</li>
+                      </ul>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open('https://developers.facebook.com/docs/app-review', '_blank')}
+                        >
+                          Learn About App Review
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={connectMetaAccount}
+                        >
+                          Try Connecting Anyway
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             )}

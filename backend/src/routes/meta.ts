@@ -15,19 +15,49 @@ import { getSignedUrl } from '../services/storage.js';
 
 const router = Router();
 
-// Start OAuth flow
-router.get('/connect', requireAuth, (req: AuthRequest, res) => {
+// Login with Facebook (basic permissions only - no ads access)
+// This always works without App Review
+router.get('/login', requireAuth, (req: AuthRequest, res) => {
+  const scopes = 'public_profile,email';
+
   const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.META_APP_ID}&redirect_uri=${encodeURIComponent(
     process.env.META_REDIRECT_URI!
-  )}&scope=ads_management,ads_read,business_management&state=${req.user!.id}`;
+  )}&scope=${scopes}&state=${req.user!.id}`;
 
-  res.json({ auth_url: authUrl });
+  res.json({ auth_url: authUrl, mode: 'login_only' });
+});
+
+// Start OAuth flow
+router.get('/connect', requireAuth, (req: AuthRequest, res) => {
+  // Use different scopes based on mode
+  // DEV mode: Only use permissions available without App Review
+  // PROD mode: Use full permissions (requires App Review)
+  const isDev = process.env.META_MODE === 'dev' || process.env.NODE_ENV === 'development';
+
+  const scopes = isDev
+    ? 'public_profile,email,ads_read' // Dev mode: basic permissions + read-only ads (only works for app admins/testers)
+    : 'ads_management,ads_read,business_management'; // Prod mode: full permissions (requires App Review)
+
+  const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.META_APP_ID}&redirect_uri=${encodeURIComponent(
+    process.env.META_REDIRECT_URI!
+  )}&scope=${scopes}&state=${req.user!.id}`;
+
+  res.json({ auth_url: authUrl, mode: isDev ? 'development' : 'production' });
 });
 
 // OAuth callback
 router.get('/callback', async (req, res) => {
   try {
-    const { code, state: userId } = req.query;
+    const { code, state: userId, error: fbError, error_description } = req.query;
+
+    // Handle Facebook errors (e.g., user denied permissions)
+    if (fbError) {
+      return res.redirect(
+        `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent(
+          error_description as string || fbError as string
+        )}`
+      );
+    }
 
     if (!code || !userId) {
       return res.status(400).json({ error: 'Missing code or state parameter' });
@@ -36,11 +66,15 @@ router.get('/callback', async (req, res) => {
     // Exchange code for access token
     const tokenData = await exchangeCodeForToken(code as string);
 
-    // Get ad accounts
-    const adAccounts = await getAdAccounts(tokenData.access_token);
+    // Try to get ad accounts (this will fail if user doesn't have ads permissions)
+    let adAccounts: any[] = [];
+    let hasAdsAccess = false;
 
-    if (adAccounts.length === 0) {
-      return res.status(400).json({ error: 'No ad accounts found' });
+    try {
+      adAccounts = await getAdAccounts(tokenData.access_token);
+      hasAdsAccess = adAccounts.length > 0;
+    } catch (error) {
+      console.log('No ads access - user probably only granted basic permissions');
     }
 
     // Save to user
@@ -48,17 +82,22 @@ router.get('/callback', async (req, res) => {
       where: { id: userId as string },
       data: {
         metaAccessToken: tokenData.access_token,
-        metaAdAccountId: adAccounts[0].id,
+        metaAdAccountId: hasAdsAccess ? adAccounts[0].id : null,
       },
     });
 
-    res.json({
-      status: 'connected',
-      ad_account_id: adAccounts[0].id,
-    });
+    // Redirect back to frontend with success
+    const redirectUrl = hasAdsAccess
+      ? `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?meta_connected=true&ads_access=true`
+      : `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?meta_connected=true&ads_access=false`;
+
+    res.redirect(redirectUrl);
   } catch (error) {
     console.error('Meta callback error:', error);
-    res.status(500).json({ error: 'Failed to connect Meta account' });
+    const errorMessage = error instanceof Error ? error.message : 'Failed to connect Meta account';
+    res.redirect(
+      `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent(errorMessage)}`
+    );
   }
 });
 
@@ -352,11 +391,18 @@ router.get('/status', requireAuth, async (req: AuthRequest, res) => {
       },
     });
 
-    const isConnected = !!(user?.metaAccessToken && user?.metaAdAccountId);
+    const hasToken = !!user?.metaAccessToken;
+    const hasAdsAccess = !!(user?.metaAccessToken && user?.metaAdAccountId);
+    const isDev = process.env.META_MODE === 'dev' || process.env.NODE_ENV === 'development';
 
     res.json({
-      connected: isConnected,
+      connected: hasToken,
+      ads_access: hasAdsAccess,
       ad_account_id: user?.metaAdAccountId || null,
+      mode: isDev ? 'development' : 'production',
+      message: hasToken && !hasAdsAccess
+        ? 'Connected with basic permissions only. Ads features require App Review.'
+        : null,
     });
   } catch (error) {
     console.error('Get status error:', error);

@@ -29,33 +29,48 @@ router.get('/login', requireAuth, (req: AuthRequest, res) => {
 
 // Start OAuth flow
 router.get('/connect', requireAuth, (req: AuthRequest, res) => {
+  // Allow explicit scope override via query param for testing
+  const scopeOverride = req.query.scopes as string;
+
   // Use different scopes based on mode
   // DEV mode: Only use permissions available without App Review
   // PROD mode: Use full permissions (requires App Review)
   const isDev = process.env.META_MODE === 'dev' || process.env.NODE_ENV === 'development';
 
-  const scopes = isDev
-    ? 'public_profile,email,ads_read' // Dev mode: basic permissions + read-only ads (only works for app admins/testers)
-    : 'ads_management,ads_read,business_management'; // Prod mode: full permissions (requires App Review)
+  const scopes = scopeOverride || (isDev
+    ? 'email,public_profile' // Start with basic permissions first for testing
+    : 'ads_management,ads_read,business_management'); // Prod mode: full permissions (requires App Review)
+
+  console.log(`Meta OAuth connect - Mode: ${isDev ? 'dev' : 'prod'}, Scopes: ${scopes}`);
 
   const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.META_APP_ID}&redirect_uri=${encodeURIComponent(
     process.env.META_REDIRECT_URI!
   )}&scope=${scopes}&state=${req.user!.id}`;
 
-  res.json({ auth_url: authUrl, mode: isDev ? 'development' : 'production' });
+  res.json({ auth_url: authUrl, mode: isDev ? 'development' : 'production', scopes });
 });
 
 // OAuth callback
 router.get('/callback', async (req, res) => {
   try {
-    const { code, state: userId, error: fbError, error_description } = req.query;
+    const {
+      code,
+      state: userId,
+      error: fbError,
+      error_description,
+      error_code,
+      error_message
+    } = req.query;
 
-    // Handle Facebook errors (e.g., user denied permissions)
-    if (fbError) {
+    // Handle Facebook errors (e.g., user denied permissions, invalid scopes)
+    if (fbError || error_code) {
+      const errorMsg = error_message || error_description || fbError || 'OAuth error occurred';
+      console.error('Meta OAuth error:', { fbError, error_code, error_message, error_description });
+
       return res.redirect(
         `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent(
-          error_description as string || fbError as string
-        )}`
+          errorMsg as string
+        )}&error_code=${error_code || ''}`
       );
     }
 

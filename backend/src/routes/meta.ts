@@ -38,7 +38,7 @@ router.get('/connect', requireAuth, (req: AuthRequest, res) => {
   const isDev = process.env.META_MODE === 'dev' || process.env.NODE_ENV === 'development';
 
   const scopes = scopeOverride || (isDev
-    ? 'email,public_profile' // Start with basic permissions first for testing
+    ? 'email,public_profile,ads_management,ads_read,business_management' // Dev mode: full permissions for admins/testers
     : 'ads_management,ads_read,business_management'); // Prod mode: full permissions (requires App Review)
 
   console.log(`Meta OAuth connect - Mode: ${isDev ? 'dev' : 'prod'}, Scopes: ${scopes}`);

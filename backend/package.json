@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
@@ -24,6 +25,7 @@
     "multer": "^1.4.5-lts.1",
     "node-vibrant": "^4.0.3",
     "openai": "^4.47.0",
+    "prisma": "^5.14.0",
     "puppeteer": "^24.27.0",
     "stripe": "^15.5.0",
     "uuid": "^9.0.1",
@@ -35,7 +37,6 @@
     "@types/multer": "^1.4.11",
     "@types/node": "^20.12.0",
     "@types/uuid": "^9.0.8",
-    "prisma": "^5.14.0",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }

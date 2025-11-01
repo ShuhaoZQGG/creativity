@@ -15,6 +15,17 @@ import { getSignedUrl } from '../services/storage.js';
 
 const router = Router();
 
+// Debug endpoint to see current Meta configuration
+router.get('/debug-config', (req, res) => {
+  res.json({
+    META_APP_ID: process.env.META_APP_ID || 'NOT SET',
+    META_REDIRECT_URI: process.env.META_REDIRECT_URI || 'NOT SET',
+    META_MODE: process.env.META_MODE || 'NOT SET',
+    FRONTEND_URL: process.env.FRONTEND_URL || 'NOT SET',
+    NODE_ENV: process.env.NODE_ENV || 'NOT SET',
+  });
+});
+
 // Login with Facebook (basic permissions only - no ads access)
 // This always works without App Review
 router.get('/login', requireAuth, (req: AuthRequest, res) => {

@@ -19,6 +19,7 @@ model User {
   subscriptionTier  String     @default("free") @map("subscription_tier")
   metaAccessToken   String?    @map("meta_access_token")
   metaAdAccountId   String?    @map("meta_ad_account_id")
+  metaPageId        String?    @map("meta_page_id")
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 

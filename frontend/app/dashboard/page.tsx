@@ -52,6 +52,8 @@ export default function DashboardPage() {
   const [metaAdsAccess, setMetaAdsAccess] = useState(false);
   const [metaAccountId, setMetaAccountId] = useState<string | null>(null);
   const [metaMode, setMetaMode] = useState<string>('development');
+  const [sandboxMode, setSandboxMode] = useState(false);
+  const [sandboxAccountId, setSandboxAccountId] = useState<string | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
@@ -73,7 +75,7 @@ export default function DashboardPage() {
 
   const loadDashboard = async () => {
     try {
-      const response = await api.get('/api/dashboard');
+      const response = await api.get('/dashboard');
       setData(response.data);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
@@ -84,11 +86,13 @@ export default function DashboardPage() {
 
   const checkMetaConnection = async () => {
     try {
-      const response = await api.get('/api/meta/status');
+      const response = await api.get('/meta/status');
       setMetaConnected(response.data.connected);
       setMetaAdsAccess(response.data.ads_access);
       setMetaAccountId(response.data.ad_account_id);
       setMetaMode(response.data.mode);
+      setSandboxMode(response.data.sandbox_mode || false);
+      setSandboxAccountId(response.data.sandbox_ad_account_id);
       if (response.data.message) {
         setConnectionMessage(response.data.message);
       }
@@ -123,7 +127,7 @@ export default function DashboardPage() {
 
   const connectMetaAccount = async () => {
     try {
-      const response = await api.get('/api/meta/connect');
+      const response = await api.get('/meta/connect');
       window.location.href = response.data.auth_url;
     } catch (error) {
       console.error('Failed to connect Meta account:', error);
@@ -132,7 +136,7 @@ export default function DashboardPage() {
 
   const loginWithFacebook = async () => {
     try {
-      const response = await api.get('/api/meta/login');
+      const response = await api.get('/meta/login');
       window.location.href = response.data.auth_url;
     } catch (error) {
       console.error('Failed to login with Facebook:', error);
@@ -321,6 +325,32 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* Sandbox Mode Banner */}
+          {sandboxMode && (
+            <div className="mb-6 bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  <div className="h-8 w-8 rounded-full bg-amber-400 flex items-center justify-center text-white font-bold text-lg">
+                    🧪
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-amber-900 text-lg mb-1">
+                    SANDBOX MODE ACTIVE
+                  </h3>
+                  <p className="text-amber-800 text-sm mb-2">
+                    You're using a test environment. All ads created will be in sandbox mode - no real ads will be delivered and no money will be charged.
+                  </p>
+                  {sandboxAccountId && (
+                    <p className="text-amber-700 text-xs font-mono bg-amber-100 inline-block px-2 py-1 rounded">
+                      Sandbox Account: {sandboxAccountId}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Meta Connection Card */}
           <Card className={`border-2 ${metaAdsAccess ? 'border-green-500/50' : metaConnected ? 'border-blue-500/50' : 'border-orange-500/50'}`}>
             <CardHeader>
@@ -343,7 +373,11 @@ export default function DashboardPage() {
                         Connect to Meta
                       </>
                     )}
-                    {metaMode === 'development' && (
+                    {sandboxMode ? (
+                      <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/40">
+                        🧪 SANDBOX
+                      </span>
+                    ) : metaMode === 'development' && (
                       <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-700 dark:text-yellow-400">
                         DEV MODE
                       </span>
@@ -357,17 +391,24 @@ export default function DashboardPage() {
                       : 'Connect your Meta (Facebook) account to run A/B tests and track analytics'}
                   </CardDescription>
                 </div>
-                {!metaConnected && (
-                  <div className="flex flex-col gap-2">
-                    <Button onClick={connectMetaAccount} size="lg" className="gap-2">
+                <div className="flex flex-col gap-2">
+                  {!metaConnected ? (
+                    <>
+                      <Button onClick={connectMetaAccount} size="lg" className="gap-2">
+                        <TestTube className="h-5 w-5" />
+                        {metaMode === 'development' ? 'Connect Meta (Dev)' : 'Connect Meta Ads'}
+                      </Button>
+                      <Button onClick={loginWithFacebook} variant="outline" size="lg" className="gap-2">
+                        Login with Facebook
+                      </Button>
+                    </>
+                  ) : (
+                    <Button onClick={connectMetaAccount} variant="outline" size="lg" className="gap-2">
                       <TestTube className="h-5 w-5" />
-                      {metaMode === 'development' ? 'Connect Meta (Dev)' : 'Connect Meta Ads'}
+                      Reconnect Meta
                     </Button>
-                    <Button onClick={loginWithFacebook} variant="outline" size="lg" className="gap-2">
-                      Login with Facebook
-                    </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </CardHeader>
             {(metaConnected || metaAdsAccess) && (

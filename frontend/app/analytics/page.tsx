@@ -2,6 +2,26 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import api from '@/lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MetricCard } from '@/components/analytics/MetricCard';
+import { LineChart } from '@/components/analytics/LineChart';
+import { BarChart } from '@/components/analytics/BarChart';
+import { PerformanceTable, Column } from '@/components/analytics/PerformanceTable';
+import {
+  Download,
+  TrendingUp,
+  TrendingDown,
+  Eye,
+  MousePointerClick,
+  DollarSign,
+  Target,
+  Calendar
+} from 'lucide-react';
 
 interface ABTest {
   id: string;
@@ -29,17 +49,21 @@ interface Analytics {
   roas: number | null;
 }
 
+type DateRangePreset = '7d' | '14d' | '30d' | '90d' | 'custom';
+
 export default function AnalyticsPage() {
   const router = useRouter();
   const [tests, setTests] = useState<ABTest[]>([]);
-  const [selectedTest, setSelectedTest] = useState<string>('');
+  const [selectedTest, setSelectedTest] = useState<string>('all');
   const [analytics, setAnalytics] = useState<Analytics[]>([]);
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('30d');
   const [dateRange, setDateRange] = useState({
-    start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
   });
+  const [previousPeriodData, setPreviousPeriodData] = useState<Analytics[]>([]);
 
   useEffect(() => {
     fetchConnectionStatus();
@@ -47,34 +71,28 @@ export default function AnalyticsPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedTest) {
+    if (selectedTest && selectedTest !== '') {
       fetchAnalytics();
+      fetchPreviousPeriodData();
     }
   }, [selectedTest, dateRange]);
 
   const fetchConnectionStatus = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/meta/status`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      setIsConnected(data.connected);
+      const response = await api.get('/meta/status');
+      setIsConnected(response.data.connected);
     } catch (error) {
       console.error('Error fetching connection status:', error);
+      setIsConnected(false);
     }
   };
 
   const fetchTests = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/meta/abtests`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      setTests(data.tests);
-      if (data.tests.length > 0 && !selectedTest) {
-        setSelectedTest(data.tests[0].id);
+      const response = await api.get('/meta/abtests');
+      setTests(response.data.tests);
+      if (response.data.tests.length > 0 && !selectedTest) {
+        setSelectedTest('all');
       }
     } catch (error) {
       console.error('Error fetching tests:', error);
@@ -85,28 +103,92 @@ export default function AnalyticsPage() {
 
   const fetchAnalytics = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/meta/abtests/${selectedTest}/analytics?start_date=${dateRange.start}&end_date=${dateRange.end}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
+      if (selectedTest === 'all') {
+        // Fetch analytics for all tests
+        const allAnalytics: Analytics[] = [];
+        for (const test of tests) {
+          const response = await api.get(
+            `/meta/abtests/${test.id}/analytics?start_date=${dateRange.start}&end_date=${dateRange.end}`
+          );
+          if (response.data.analytics) {
+            allAnalytics.push(...response.data.analytics);
+          }
         }
-      );
-      const data = await response.json();
-      setAnalytics(data.analytics || []);
+        setAnalytics(allAnalytics);
+      } else {
+        const response = await api.get(
+          `/meta/abtests/${selectedTest}/analytics?start_date=${dateRange.start}&end_date=${dateRange.end}`
+        );
+        setAnalytics(response.data.analytics || []);
+      }
     } catch (error) {
       console.error('Error fetching analytics:', error);
     }
   };
 
+  const fetchPreviousPeriodData = async () => {
+    try {
+      const startDate = new Date(dateRange.start);
+      const endDate = new Date(dateRange.end);
+      const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      const prevStart = new Date(startDate.getTime() - periodDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const prevEnd = new Date(startDate.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      if (selectedTest === 'all') {
+        const allAnalytics: Analytics[] = [];
+        for (const test of tests) {
+          const response = await api.get(
+            `/meta/abtests/${test.id}/analytics?start_date=${prevStart}&end_date=${prevEnd}`
+          );
+          if (response.data.analytics) {
+            allAnalytics.push(...response.data.analytics);
+          }
+        }
+        setPreviousPeriodData(allAnalytics);
+      } else if (selectedTest) {
+        const response = await api.get(
+          `/meta/abtests/${selectedTest}/analytics?start_date=${prevStart}&end_date=${prevEnd}`
+        );
+        setPreviousPeriodData(response.data.analytics || []);
+      }
+    } catch (error) {
+      console.error('Error fetching previous period data:', error);
+    }
+  };
+
+  const handleDateRangePresetChange = (preset: DateRangePreset) => {
+    setDateRangePreset(preset);
+
+    if (preset === 'custom') return;
+
+    const end = new Date().toISOString().split('T')[0];
+    let start: string;
+
+    switch (preset) {
+      case '7d':
+        start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        break;
+      case '14d':
+        start = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        break;
+      case '30d':
+        start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        break;
+      case '90d':
+        start = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        break;
+      default:
+        return;
+    }
+
+    setDateRange({ start, end });
+  };
+
   const connectMetaAccount = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/meta/connect`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      window.location.href = data.auth_url;
+      const response = await api.get('/meta/connect');
+      window.location.href = response.data.auth_url;
     } catch (error) {
       console.error('Error connecting Meta account:', error);
     }
@@ -122,6 +204,23 @@ export default function AnalyticsPage() {
       }),
       { impressions: 0, clicks: 0, conversions: 0, spend: 0 }
     );
+  };
+
+  const calculatePreviousTotals = () => {
+    return previousPeriodData.reduce(
+      (acc, curr) => ({
+        impressions: acc.impressions + curr.impressions,
+        clicks: acc.clicks + curr.clicks,
+        conversions: acc.conversions + curr.conversions,
+        spend: acc.spend + curr.spend,
+      }),
+      { impressions: 0, clicks: 0, conversions: 0, spend: 0 }
+    );
+  };
+
+  const calculateChange = (current: number, previous: number): number => {
+    if (previous === 0) return 0;
+    return ((current - previous) / previous) * 100;
   };
 
   const exportToCSV = () => {
@@ -147,246 +246,371 @@ export default function AnalyticsPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `analytics-${selectedTest}-${new Date().toISOString()}.csv`;
+    link.download = `analytics-${selectedTest}-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
   };
 
+  // Prepare time-series data for charts
+  const timeSeriesData = analytics
+    .reduce((acc: any[], data) => {
+      const dateStr = new Date(data.date).toLocaleDateString();
+      const existing = acc.find((item) => item.date === dateStr);
+
+      if (existing) {
+        existing.impressions += data.impressions;
+        existing.clicks += data.clicks;
+        existing.spend += data.spend;
+        existing.conversions += data.conversions;
+      } else {
+        acc.push({
+          date: dateStr,
+          impressions: data.impressions,
+          clicks: data.clicks,
+          spend: data.spend,
+          conversions: data.conversions,
+          ctr: data.ctr,
+        });
+      }
+
+      return acc;
+    }, [])
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Prepare table columns
+  const analyticsColumns: Column[] = [
+    { key: 'date', label: 'Date', sortable: true, format: 'date' },
+    { key: 'impressions', label: 'Impressions', sortable: true, format: 'number', align: 'right' },
+    { key: 'clicks', label: 'Clicks', sortable: true, format: 'number', align: 'right' },
+    { key: 'ctr', label: 'CTR', sortable: true, format: 'percent', align: 'right' },
+    { key: 'conversions', label: 'Conversions', sortable: true, format: 'number', align: 'right' },
+    { key: 'spend', label: 'Spend', sortable: true, format: 'currency', align: 'right' },
+    { key: 'cpc', label: 'CPC', sortable: true, format: 'currency', align: 'right' },
+    { key: 'cpm', label: 'CPM', sortable: true, format: 'currency', align: 'right' },
+  ];
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+      <div className="min-h-screen bg-background p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="h-10 w-48 bg-muted animate-pulse rounded mb-8" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i} className="animate-pulse">
+                <CardHeader>
+                  <div className="h-6 w-24 bg-muted rounded" />
+                </CardHeader>
+                <CardContent>
+                  <div className="h-8 w-32 bg-muted rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!isConnected) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md max-w-md text-center">
-          <h2 className="text-2xl font-bold mb-4">Connect Meta Account</h2>
-          <p className="text-gray-600 mb-6">
-            You need to connect your Meta (Facebook) account to view analytics.
-          </p>
-          <button
-            onClick={connectMetaAccount}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-          >
-            Connect Meta Account
-          </button>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full text-center">
+          <CardHeader>
+            <CardTitle className="text-2xl">Connect Meta Account</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-muted-foreground">
+              You need to connect your Meta (Facebook) account to view analytics.
+            </p>
+            <Button onClick={connectMetaAccount} size="lg" className="w-full">
+              Connect Meta Account
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   if (tests.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
+      <div className="min-h-screen bg-background p-8">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-3xl font-bold mb-8">Analytics</h1>
-          <div className="bg-white p-12 rounded-lg shadow-md text-center">
-            <p className="text-gray-600 text-lg">No A/B tests found</p>
-            <p className="text-gray-500 mt-2">Create an A/B test to view analytics</p>
-            <button
-              onClick={() => router.push('/ab-testing')}
-              className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
-            >
-              Go to A/B Testing
-            </button>
-          </div>
+          <Card>
+            <CardContent className="py-16 text-center">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
+                  <TrendingUp className="h-10 w-10 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold mb-2">No A/B tests found</h3>
+                  <p className="text-muted-foreground mb-6">
+                    Create an A/B test to start viewing analytics
+                  </p>
+                  <Button onClick={() => router.push('/ab-testing')} size="lg">
+                    Go to A/B Testing
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
   }
 
   const totals = calculateTotals();
+  const previousTotals = calculatePreviousTotals();
   const avgCTR = totals.clicks / totals.impressions || 0;
   const avgCPC = totals.spend / totals.clicks || 0;
+  const prevAvgCTR = previousTotals.clicks / previousTotals.impressions || 0;
+  const prevAvgCPC = previousTotals.spend / previousTotals.clicks || 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Analytics</h1>
-          <button
-            onClick={exportToCSV}
-            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
-          >
+    <div className="min-h-screen bg-background p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">Analytics</h1>
+            <p className="text-muted-foreground mt-1">
+              Track and analyze your ad performance
+            </p>
+          </div>
+          <Button onClick={exportToCSV} disabled={analytics.length === 0}>
+            <Download className="h-4 w-4 mr-2" />
             Export CSV
-          </button>
+          </Button>
         </div>
 
         {/* Filters */}
-        <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Select Test</label>
-              <select
-                value={selectedTest}
-                onChange={(e) => setSelectedTest(e.target.value)}
-                className="w-full border rounded-lg px-4 py-2"
-              >
-                {tests.map((test) => (
-                  <option key={test.id} value={test.id}>
-                    Test #{test.id.substring(0, 8)} - {test.objective}
-                  </option>
-                ))}
-              </select>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Test Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Select Test</label>
+                <Select value={selectedTest} onValueChange={setSelectedTest}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select test" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Tests</SelectItem>
+                    {tests.map((test) => (
+                      <SelectItem key={test.id} value={test.id}>
+                        {test.name || `Test #${test.id.substring(0, 8)}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Date Range Preset */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Time Period</label>
+                <Select value={dateRangePreset} onValueChange={(v) => handleDateRangePresetChange(v as DateRangePreset)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7d">Last 7 Days</SelectItem>
+                    <SelectItem value="14d">Last 14 Days</SelectItem>
+                    <SelectItem value="30d">Last 30 Days</SelectItem>
+                    <SelectItem value="90d">Last 90 Days</SelectItem>
+                    <SelectItem value="custom">Custom Range</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Start Date */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Start Date</label>
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => {
+                    setDateRange({ ...dateRange, start: e.target.value });
+                    setDateRangePreset('custom');
+                  }}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* End Date */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">End Date</label>
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => {
+                    setDateRange({ ...dateRange, end: e.target.value });
+                    setDateRangePreset('custom');
+                  }}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Start Date</label>
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">End Date</label>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2"
-              />
-            </div>
-          </div>
+          </CardContent>
+        </Card>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <MetricCard
+            title="Total Impressions"
+            value={totals.impressions.toLocaleString()}
+            change={calculateChange(totals.impressions, previousTotals.impressions)}
+            trend={totals.impressions > previousTotals.impressions ? 'up' : totals.impressions < previousTotals.impressions ? 'down' : 'stable'}
+            icon={Eye}
+            changeLabel="vs previous period"
+          />
+          <MetricCard
+            title="Total Clicks"
+            value={totals.clicks.toLocaleString()}
+            change={calculateChange(totals.clicks, previousTotals.clicks)}
+            trend={totals.clicks > previousTotals.clicks ? 'up' : totals.clicks < previousTotals.clicks ? 'down' : 'stable'}
+            icon={MousePointerClick}
+            changeLabel="vs previous period"
+          />
+          <MetricCard
+            title="Average CTR"
+            value={(avgCTR * 100).toFixed(2)}
+            valueSuffix="%"
+            change={calculateChange(avgCTR, prevAvgCTR)}
+            trend={avgCTR > prevAvgCTR ? 'up' : avgCTR < prevAvgCTR ? 'down' : 'stable'}
+            icon={TrendingUp}
+            changeLabel="vs previous period"
+          />
+          <MetricCard
+            title="Total Spend"
+            value={totals.spend.toFixed(2)}
+            valuePrefix="$"
+            change={calculateChange(totals.spend, previousTotals.spend)}
+            trend={totals.spend < previousTotals.spend ? 'up' : totals.spend > previousTotals.spend ? 'down' : 'stable'}
+            icon={DollarSign}
+            changeLabel="vs previous period"
+          />
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <p className="text-gray-600 text-sm mb-1">Total Impressions</p>
-            <p className="text-3xl font-bold">{totals.impressions.toLocaleString()}</p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <p className="text-gray-600 text-sm mb-1">Total Clicks</p>
-            <p className="text-3xl font-bold">{totals.clicks.toLocaleString()}</p>
-            <p className="text-sm text-gray-500 mt-1">
-              CTR: {(avgCTR * 100).toFixed(2)}%
-            </p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <p className="text-gray-600 text-sm mb-1">Total Conversions</p>
-            <p className="text-3xl font-bold">{totals.conversions.toLocaleString()}</p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <p className="text-gray-600 text-sm mb-1">Total Spend</p>
-            <p className="text-3xl font-bold">${totals.spend.toFixed(2)}</p>
-            <p className="text-sm text-gray-500 mt-1">
-              Avg CPC: ${avgCPC.toFixed(2)}
-            </p>
-          </div>
-        </div>
+        {/* Charts */}
+        <Tabs defaultValue="performance">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="performance">Performance Trends</TabsTrigger>
+            <TabsTrigger value="metrics">Metric Breakdown</TabsTrigger>
+            <TabsTrigger value="detailed">Detailed Data</TabsTrigger>
+          </TabsList>
 
-        {/* Performance Chart Placeholder */}
-        <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-          <h2 className="text-xl font-semibold mb-4">Performance Over Time</h2>
-          {analytics.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              No analytics data available for the selected period
-            </div>
-          ) : (
-            <div className="h-64 flex items-end justify-around gap-2">
-              {analytics.slice(0, 10).map((data, index) => {
-                const maxImpressions = Math.max(...analytics.map((a) => a.impressions));
-                const height = (data.impressions / maxImpressions) * 100;
-                return (
-                  <div key={index} className="flex-1 flex flex-col items-center">
-                    <div
-                      className="w-full bg-blue-500 rounded-t"
-                      style={{ height: `${height}%` }}
-                      title={`${data.impressions} impressions`}
-                    ></div>
-                    <p className="text-xs mt-2 text-gray-600">
-                      {new Date(data.date).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Detailed Table */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Detailed Analytics</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Impressions
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Clicks
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    CTR
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Conversions
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Spend
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    CPC
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    CPM
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {analytics.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
-                      No data available
-                    </td>
-                  </tr>
+          <TabsContent value="performance" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Performance Over Time</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {timeSeriesData.length > 0 ? (
+                  <LineChart
+                    data={timeSeriesData}
+                    lines={[
+                      { dataKey: 'impressions', name: 'Impressions', color: '#3b82f6' },
+                      { dataKey: 'clicks', name: 'Clicks', color: '#10b981' },
+                      { dataKey: 'conversions', name: 'Conversions', color: '#f59e0b' },
+                    ]}
+                    xKey="date"
+                    height={400}
+                  />
                 ) : (
-                  analytics.map((data) => (
-                    <tr key={data.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {new Date(data.date).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {data.impressions.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {data.clicks.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {(data.ctr * 100).toFixed(2)}%
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {data.conversions.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        ${data.spend.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        ${data.cpc.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        ${data.cpm.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))
+                  <div className="py-16 text-center text-muted-foreground">
+                    No data available for the selected period
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="metrics" className="mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Daily Spend</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {timeSeriesData.length > 0 ? (
+                    <BarChart
+                      data={timeSeriesData}
+                      bars={[{ dataKey: 'spend', name: 'Spend ($)', color: '#ef4444' }]}
+                      xKey="date"
+                      layout="horizontal"
+                      height={300}
+                      yAxisFormatter={(value) => `$${value.toFixed(2)}`}
+                    />
+                  ) : (
+                    <div className="py-8 text-center text-muted-foreground">
+                      No data available
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Engagement Metrics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-muted-foreground">Click-Through Rate</span>
+                        <span className="font-medium">{(avgCTR * 100).toFixed(2)}%</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-green-500"
+                          style={{ width: `${Math.min(avgCTR * 100 * 10, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-muted-foreground">Cost Per Click</span>
+                        <span className="font-medium">${avgCPC.toFixed(2)}</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500"
+                          style={{ width: `${Math.min((5 - avgCPC) * 20, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-muted-foreground">Total Conversions</span>
+                        <span className="font-medium">{totals.conversions}</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-orange-500"
+                          style={{ width: `${Math.min((totals.conversions / totals.clicks) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="detailed" className="mt-6">
+            <PerformanceTable
+              title="Detailed Analytics"
+              data={analytics}
+              columns={analyticsColumns}
+              pageSize={15}
+              searchable={false}
+              exportable={true}
+              onExport={exportToCSV}
+              emptyMessage="No analytics data available for the selected period"
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
